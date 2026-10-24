@@ -511,4 +511,71 @@ ${rawDraft.replace(/^---[\s\S]*?---\s*/, '')}
     }
     return results;
   }
+
+  /* ========================================================================= */
+  /*                       MÉTODOS DE DOMINIO MUSICAL SUNO                     */
+  /* ========================================================================= */
+
+  getArtistsDir(): string {
+    const dir = path.join(this.vaultDir, 'Artistas');
+    this.ensureDir(dir);
+    return dir;
+  }
+
+  listArtists(): string[] {
+    const dir = this.getArtistsDir();
+    return fs.readdirSync(dir, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
+      .map((e) => e.name);
+  }
+
+  listEPs(artistSlug: string): string[] {
+    const artistDir = path.join(this.getArtistsDir(), this.sanitizeSlug(artistSlug));
+    if (!fs.existsSync(artistDir)) return [];
+    return fs.readdirSync(artistDir, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
+      .map((e) => e.name);
+  }
+
+  listSongs(artistSlug: string, epSlug: string): string[] {
+    const epDir = path.join(this.getArtistsDir(), this.sanitizeSlug(artistSlug), this.sanitizeSlug(epSlug));
+    if (!fs.existsSync(epDir)) return [];
+    return fs.readdirSync(epDir, { withFileTypes: true })
+      .filter((e) => e.isFile() && e.name.endsWith('.md') && !e.name.startsWith('_'))
+      .map((e) => e.name);
+  }
+
+  saveArtistNote(artistSlug: string, content: string): string {
+    const clean = this.sanitizeSlug(artistSlug);
+    const artistDir = path.join(this.getArtistsDir(), clean);
+    this.ensureDir(artistDir);
+    const targetFile = path.join(artistDir, '_artista.md');
+    this.createSafetyBackup(targetFile);
+    fs.writeFileSync(targetFile, content, 'utf8');
+    return targetFile;
+  }
+
+  saveEPNote(artistSlug: string, epSlug: string, content: string): string {
+    const cleanArtist = this.sanitizeSlug(artistSlug);
+    const cleanEP = this.sanitizeSlug(epSlug);
+    const epDir = path.join(this.getArtistsDir(), cleanArtist, cleanEP);
+    this.ensureDir(epDir);
+    const targetFile = path.join(epDir, '_ep.md');
+    this.createSafetyBackup(targetFile);
+    fs.writeFileSync(targetFile, content, 'utf8');
+    return targetFile;
+  }
+
+  saveSongTrackNote(artistSlug: string, epSlug: string, trackNumber: number, trackSlug: string, content: string): string {
+    const cleanArtist = this.sanitizeSlug(artistSlug);
+    const cleanEP = this.sanitizeSlug(epSlug);
+    const cleanTrack = this.sanitizeSlug(trackSlug);
+    const epDir = path.join(this.getArtistsDir(), cleanArtist, cleanEP);
+    this.ensureDir(epDir);
+    const num = String(trackNumber).padStart(2, '0');
+    const targetFile = path.join(epDir, `${num} - ${cleanTrack}.md`);
+    this.createSafetyBackup(targetFile);
+    fs.writeFileSync(targetFile, content, 'utf8');
+    return targetFile;
+  }
 }

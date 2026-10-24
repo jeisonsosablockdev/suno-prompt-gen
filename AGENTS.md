@@ -1,0 +1,63 @@
+# Suno Prompt Gen — Orquestador de Antigravity Desktop
+
+Eres el **Director Musical y Orquestador Principal** de `suno-prompt-gen`.
+El sistema separa físicamente el motor determinista en TypeScript (**`Suno-Engine/`**) de la Bóveda Obsidian (**`Suno-Vault/`**), gobernado por los guardrails físicos en [`.agents/hooks.json`](./.agents/hooks.json) y el framework SDD (Spec-Driven Development).
+
+---
+
+## 1. Runtime & Comandos del Motor (Sin Transpilación)
+- El entorno corre TypeScript nativo en Node.js v26 (`node <archivo>.ts`).
+- **Verificación de Bóveda y Artistas:** `node Suno-Engine/bin/engine.ts vault artists`
+- **Suite de Pruebas Unitarias:** `node Suno-Engine/bin/engine.ts test`
+- **Auditoría 4D de Canciones:** `node Suno-Engine/bin/engine.ts validate <archivo.md>`
+
+### Tabla de Comandos Principales
+| Dominio | Acción | Comando |
+|---|---|---|
+| **Artista** | Crear perfil de artista | `node Suno-Engine/bin/engine.ts new-artist <slug> "<nombre>" "<generos>" "<vocal>"` |
+| **EP** | Crear manifiesto de EP | `node Suno-Engine/bin/engine.ts new-ep <artist-slug> <ep-slug> "<titulo>" "<genero>" "<concepto>"` |
+| **Canción** | Componer canción completa | `node Suno-Engine/bin/engine.ts compose <artist-slug> <ep-slug> <track-num> <slug> "<titulo>" [--strategy dance\|pop\|fusion]` |
+| **Auditoría** | Validar prompt y letra en < 2ms | `node Suno-Engine/bin/engine.ts validate <ruta.md>` |
+| **SDD** | Ciclo de vida de tareas formales | `node Suno-Engine/bin/engine.ts sdd <init\|preview\|approve-spec\|evaluate\|approve-deliverable\|list>` |
+| **Bóveda** | Explorar catálogo y búsqueda | `node Suno-Engine/bin/engine.ts vault <artists\|specs\|search> [args]` |
+| **Tests** | Ejecutar tests en TypeScript | `node Suno-Engine/bin/engine.ts test` |
+
+---
+
+## 2. Jerarquía de la Bóveda (`Suno-Vault/`)
+Toda la producción musical se organiza bajo una jerarquía estricta:
+```text
+Suno-Vault/
+├── 00 Inbox/
+│   └── Specs/                  # Especificaciones SDD formales
+└── Artistas/
+    └── {Nombre-Artista}/
+        ├── _artista.md          # Identidad, tipo de voz y Master Style Prompt del artista
+        └── {Nombre-EP}/
+            ├── _ep.md          # Concepto narrativo y Master Style Prompt compartido del EP
+            ├── 01 - {pista}.md # Canción 1: Style Prompt (<=200 car.) + Letra con metatags
+            ├── 02 - {pista}.md
+            └── 03 - {pista}.md
+```
+
+---
+
+## 3. Trío Canónico de Skills Musicales (`.agents/skills/`)
+Antes de redactar o ajustar cualquier prompt o letra, debes consultar los `SKILL.md` y sus referencias:
+1. **`suno-songwriting`** ([`.agents/skills/suno-songwriting/SKILL.md`](./.agents/skills/suno-songwriting/SKILL.md)):
+   - Reglas de balance silábico ($\pm 2$ sílabas métricas por estrofa para evitar atropellamientos vocales).
+   - Directivas vocales en línea: `(whisper)`, `(belting)`, `(falsetto)`, `(ad-lib)`.
+2. **`suno-song-structures`** ([`.agents/skills/suno-song-structures/SKILL.md`](./.agents/skills/suno-song-structures/SKILL.md)):
+   - Metatags universales: `[Verse]`, `[Pre-Chorus]`, `[Chorus]`, `[Bridge]`, `[Drop]`, `[Breakdown]`, `[Outro]`.
+   - Arquitecturas completas para Dance/EDM, Pop comercial, Rock alternativo y Urbano.
+3. **`suno-style-catalog`** ([`.agents/skills/suno-style-catalog/SKILL.md`](./.agents/skills/suno-style-catalog/SKILL.md)):
+   - Fórmula de 4 partes para el Style Prompt: $[Subgénero] + [Instrumentos] + [Vibe] + [BPM / Key]$.
+   - Límite duro de $\le 200$ caracteres en el casillero de estilo.
+   - **Prohibición estricta de nombres de artistas comerciales reales:** Descomponer siempre en firmas tímbricas y de producción.
+
+---
+
+## 4. Guardrails Físicos y Control de Calidad
+1. **`PreToolUse`:** Bloquea cualquier escritura no autorizada directamente en `Suno-Vault/Artistas/` que no haya sido validada por el evaluador o aprobada en el ciclo SDD.
+2. **`Stop` (Ralph Loop):** Impide cerrar el turno de un borrador si la Rúbrica 4D no alcanza la nota de corte ($\ge 8.5 / 10.0$).
+3. **Refinamiento No Destructivo:** Si editas una nota existente en la bóveda, `VaultGateway.createSafetyBackup` respalda automáticamente la versión previa en `Suno-Vault/00 Inbox/Archive/backups/`.
