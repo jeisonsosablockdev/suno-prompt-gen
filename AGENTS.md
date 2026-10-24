@@ -42,7 +42,20 @@ Suno-Vault/
 
 ---
 
-## 3. Trío Canónico de Skills Musicales (`.agents/skills/`)
+## 3. Subagentes Especializados (`.agents/agents/`)
+El sistema orquesta 4 subagentes declarativos con roles, aislamiento de contexto y modelos diferenciados:
+1. **`suno-songwriting-worker`** ([`suno-songwriting-worker.yaml`](./.agents/agents/suno-songwriting-worker.yaml)):
+   - **Rol:** Letrista, balance silábico ($\pm 2$), esquemas de rima y directivas vocales en línea (`serial_write`, `pro`).
+2. **`suno-structures-worker`** ([`suno-structures-worker.yaml`](./.agents/agents/suno-structures-worker.yaml)):
+   - **Rol:** Arreglista de dinámica, build-ups, drops y metatags universales de Suno (`serial_write`, `pro`).
+3. **`suno-style-researcher`** ([`suno-style-researcher.yaml`](./.agents/agents/suno-style-researcher.yaml)):
+   - **Rol:** Investigador tímbrico y diseñador de Style Prompts compactos de $\le 200$ caracteres (`parallel_read`, `flash`).
+4. **`sdd-reviewer`** ([`sdd-reviewer.yaml`](./.agents/agents/sdd-reviewer.yaml)):
+   - **Rol:** Auditor crítico y validador adversarial que ejecuta la Rúbrica 4D con umbral $\ge 8.5/10$ (`validator`, `pro`).
+
+---
+
+## 4. Trío Canónico de Skills Musicales (`.agents/skills/`)
 Antes de redactar o ajustar cualquier prompt o letra, debes consultar los `SKILL.md` y sus referencias:
 1. **`suno-songwriting`** ([`.agents/skills/suno-songwriting/SKILL.md`](./.agents/skills/suno-songwriting/SKILL.md)):
    - Reglas de balance silábico ($\pm 2$ sílabas métricas por estrofa para evitar atropellamientos vocales).
@@ -57,7 +70,7 @@ Antes de redactar o ajustar cualquier prompt o letra, debes consultar los `SKILL
 
 ---
 
-## 4. Guardrails Físicos y Control de Calidad
+## 5. Guardrails Físicos y Control de Calidad
 1. **`PreToolUse`:** Bloquea cualquier escritura no autorizada directamente en `Suno-Vault/Artistas/` que no haya sido validada por el evaluador o aprobada en el ciclo SDD.
 2. **`Stop` (Ralph Loop):** Impide cerrar el turno de un borrador si la Rúbrica 4D no alcanza la nota de corte ($\ge 8.5 / 10.0$).
 3. **Refinamiento No Destructivo:** Si editas una nota existente en la bóveda, `VaultGateway.createSafetyBackup` respalda automáticamente la versión previa en `Suno-Vault/00 Inbox/Archive/backups/`.
