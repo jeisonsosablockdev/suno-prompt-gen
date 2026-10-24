@@ -112,8 +112,8 @@ export class TaskOrchestrator {
     requestOrSlug: CreateSpecRequest | string,
     title?: string,
     targetFolder: string = 'Artistas',
-    subagents: string[] = ['business-consultant'],
-    icp: string = 'Institutional Real Estate Sponsors & YC Investors',
+    subagents: string[] = ['suno-songwriting-worker', 'suno-structures-worker'],
+    icp: string = 'Oyentes de Suno AI & Productores Musicales',
     goal: string = ''
   ): Required<
     Omit<
@@ -141,9 +141,9 @@ export class TaskOrchestrator {
         subagents:
           requestOrSlug.subagents && requestOrSlug.subagents.length > 0
             ? requestOrSlug.subagents
-            : ['business-consultant'],
+            : ['suno-songwriting-worker', 'suno-structures-worker'],
         approvedSkills: requestOrSlug.approvedSkills,
-        icp: requestOrSlug.icp || 'Institutional Real Estate Sponsors & YC Investors',
+        icp: requestOrSlug.icp || 'Oyentes de Suno AI & Productores Musicales',
         goal: requestOrSlug.goal || '',
         featureBranch: requestOrSlug.featureBranch,
         executionEngine: requestOrSlug.executionEngine,
@@ -157,7 +157,7 @@ export class TaskOrchestrator {
       slug: requestOrSlug,
       title: title || requestOrSlug,
       targetFolder,
-      subagents: subagents.length > 0 ? subagents : ['business-consultant'],
+      subagents: subagents.length > 0 ? subagents : ['suno-songwriting-worker', 'suno-structures-worker'],
       icp,
       goal,
     };

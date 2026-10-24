@@ -14,7 +14,7 @@ const ENGINE_DIR = path.resolve(__dirname, '../..');
 const ROOT_DIR = path.resolve(ENGINE_DIR, '..');
 const DEFAULT_BRAIN_DIR = path.join(ROOT_DIR, 'Suno-Vault');
 const DEFAULT_SPECS_DIR = path.join(DEFAULT_BRAIN_DIR, '00 Inbox', 'Specs');
-const DEFAULT_AGENTS_DIR = path.join(ROOT_DIR, '.agents');
+const DEFAULT_AGENTS_DIR = path.join(ROOT_DIR, '.agents', 'agents');
 
 export interface PreToolUsePayload {
   sessionId?: string;

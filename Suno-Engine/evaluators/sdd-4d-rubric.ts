@@ -25,7 +25,7 @@ import type {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DEFAULT_SKILLS_DIR = path.resolve(__dirname, '../../.agents/skills');
-const DEFAULT_AGENTS_DIR = path.resolve(__dirname, '../../.agents');
+const DEFAULT_AGENTS_DIR = path.resolve(__dirname, '../../.agents/agents');
 
 export { evaluateWithClefSync, computeClefCacheKey };
 export type {
@@ -531,7 +531,7 @@ export function discoverSkillsForTask(
 
   return {
     skills: topSkills,
-    recommendedSubagents: sortedAgents.length > 0 ? sortedAgents : ['business-consultant', 'founder-ghostwriter'],
+    recommendedSubagents: sortedAgents.length > 0 ? sortedAgents : ['suno-songwriting-worker', 'suno-structures-worker'],
     recommendedExecutionEngine,
     ...(recommendedTeamworkScale ? { recommendedTeamworkScale } : {}),
   };
