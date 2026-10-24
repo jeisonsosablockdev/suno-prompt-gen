@@ -106,8 +106,7 @@ export function injectTemplate(
       if (val === undefined || val === null) {
         return fullMatch;
       }
-      const str = String(val).trim();
-      return str.length > 0 ? str : fullMatch;
+      return String(val);
     });
 }
 

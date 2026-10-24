@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { scanAndRemediateArtists, scanUnresolvedVariables } from '../evaluators/lexical-filter.ts';
-import { evaluateSunoTrack, estimateSyllables } from '../evaluators/suno-rubric.ts';
+import { evaluateSunoTrack, evaluateClubPrompter, estimateSyllables } from '../evaluators/suno-rubric.ts';
+import { formatSunoGenerationName, generateClubAdvancedTrack } from '../strategies/club-advanced.ts';
 
 test('LexicalFilter: detecta y remedia nombres de artistas baneados', () => {
   const dirty = 'Quiero una cancion estilo Daft Punk con toques de The Weeknd';
@@ -72,4 +73,86 @@ test('SunoRubric: penaliza un track defectuoso (demasiados caracteres y artista 
   assert.equal(report.passed, false);
   assert.ok(report.totalScore < 8.0, `Score esperado < 8.0 pero fue ${report.totalScore}`);
   assert.ok(report.remediationDirectives.length > 0);
+});
+
+test('ClubAdvanced: genera y formatea nombres con versión al final según convención', () => {
+  const name1 = formatSunoGenerationName('disco nights', 7, 15, 100, 50, 'N', 'v6', true);
+  assert.equal(name1, 'I disco nights 7 Max W:15 S:100 A:50 V:N v6');
+
+  const name2 = formatSunoGenerationName('disco nights', 6, 0, 67, 70, 'N', 'v6', true);
+  assert.equal(name2, 'I disco nights 6 Max W:0 S:67 A:70 V:N v6');
+
+  const nameVocal = formatSunoGenerationName('neon anthem', 1, 10, 90, 80, 'H', 'v6', false);
+  assert.equal(nameVocal, 'V neon anthem 1 Max W:10 S:90 A:80 V:H v6');
+});
+
+test('evaluateClubPrompter: aprueba con nota >= 9.5 un track de club avanzado completo', () => {
+  const track = generateClubAdvancedTrack({
+    title: 'Disco Nights',
+    subgenre: 'Dark Disco, NY House, Dark House',
+    bpm: 125,
+    musicalKey: 'E minor',
+    vocalStyle: 'Vocoder',
+    vocalHook: 'I love disco nights',
+    sunoVersion: 'v6',
+  });
+
+  const audit = evaluateClubPrompter({
+    generationName: track.defaultGenerationName,
+    stylePrompt: track.stylePrompt,
+    excludeStyles: track.excludeStyles,
+    lyricsWithMetatags: track.lyricsWithMetatags,
+  });
+
+  assert.equal(audit.passed, true);
+  assert.ok(audit.totalScore >= 9.5, `Score esperado >= 9.5 pero fue ${audit.totalScore}`);
+  assert.equal(audit.gates.gate1_naming.passed, true);
+  assert.equal(audit.gates.gate2_microTags.passed, true);
+  assert.equal(audit.gates.gate3_barCounts.passed, true);
+  assert.equal(audit.gates.gate4_styleBox.passed, true);
+  assert.equal(audit.gates.gate5_excludeStyles.passed, true);
+  assert.equal(audit.gates.gate6_dropIsolation.passed, true);
+});
+
+test('evaluateClubPrompter: falla Gate 1 si la versión no está al final', () => {
+  const track = generateClubAdvancedTrack({
+    title: 'Disco Nights',
+    subgenre: 'Dark Disco',
+    bpm: 125,
+    musicalKey: 'E minor',
+  });
+
+  // Versión colocada erróneamente al principio
+  const invalidName = 'v6 I disco nights 7 Max W:15 S:100 A:50 V:N';
+
+  const audit = evaluateClubPrompter({
+    generationName: invalidName,
+    stylePrompt: track.stylePrompt,
+    excludeStyles: track.excludeStyles,
+    lyricsWithMetatags: track.lyricsWithMetatags,
+  });
+
+  assert.equal(audit.passed, false);
+  assert.equal(audit.gates.gate1_naming.passed, false);
+  assert.ok(audit.observations.some(o => o.includes('Formato de nombre inválido')));
+});
+
+test('evaluateClubPrompter: falla Gate 5 si Exclude Styles tiene menos de 3 tags', () => {
+  const track = generateClubAdvancedTrack({
+    title: 'Disco Nights',
+    subgenre: 'Dark Disco',
+    bpm: 125,
+    musicalKey: 'E minor',
+  });
+
+  const audit = evaluateClubPrompter({
+    generationName: track.defaultGenerationName,
+    stylePrompt: track.stylePrompt,
+    excludeStyles: 'EDM, Pop', // Solo 2 tags
+    lyricsWithMetatags: track.lyricsWithMetatags,
+  });
+
+  assert.equal(audit.passed, false);
+  assert.equal(audit.gates.gate5_excludeStyles.passed, false);
+  assert.ok(audit.observations.some(o => o.includes('Exclude Styles solo contiene 2')));
 });

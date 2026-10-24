@@ -17,11 +17,12 @@ import { fileURLToPath } from 'node:url';
 import { TaskOrchestrator } from '../core/orchestrator.ts';
 import { VaultGateway } from '../core/vault-gateway.ts';
 import { injectTemplate, loadTemplateFile } from '../core/template-injector.ts';
-import { evaluateSunoTrack } from '../evaluators/suno-rubric.ts';
+import { evaluateSunoTrack, evaluateClubPrompter } from '../evaluators/suno-rubric.ts';
 import { generateDanceClubTrack } from '../strategies/dance-club.ts';
 import { generatePopCommercialTrack } from '../strategies/pop-commercial.ts';
 import { generateFusionTrack } from '../strategies/fusion.ts';
 import { generateTagDensePrompt } from '../strategies/tag-dense.ts';
+import { generateClubAdvancedTrack, formatSunoGenerationName } from '../strategies/club-advanced.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -46,11 +47,11 @@ Comandos de Composición & Bóveda Musical:
   new-ep <artist-slug> <ep-slug> "<titulo-ep>" "<genero>" "<concepto>"
      Crea el manifiesto del EP en Suno-Vault/Artistas/<artist>/<ep>/_ep.md
 
-  compose <artist-slug> <ep-slug> <track-number> <track-slug> "<titulo>" [--strategy dance|pop|fusion]
-     Genera una canción estructurada y auditada con metatags en la bóveda
+  compose <artist-slug> <ep-slug> <track-number> <track-slug> "<titulo>" [--strategy club|dance|pop|fusion]
+     Genera una canción estructurada y auditada con metatags en la bóveda (Modo Avanzado Suno v6 por defecto: club)
 
   validate <archivo.md>
-     Ejecuta la Rúbrica 4D de Suno en < 2ms (caracteres, metatags, filtro anti-artistas)
+     Ejecuta la Rúbrica 4D y el Auditor Ralph Loop de 6 filtros en < 2ms
 
 Comandos SDD y Gobernanza:
   sdd <init|preview|approve-spec|evaluate|approve-deliverable|list>
@@ -154,41 +155,179 @@ switch (command) {
     const title = args[5] || 'Nueva Canción';
 
     const stratArgIdx = args.indexOf('--strategy');
-    const strategy = stratArgIdx !== -1 ? args[stratArgIdx + 1] : 'dance';
+    const strategy = stratArgIdx !== -1 ? args[stratArgIdx + 1] : 'club';
 
     if (!artistSlug || !epSlug || isNaN(trackNum)) {
-      console.log('Uso: engine compose <artist-slug> <ep-slug> <track-number> <track-slug> "<titulo>" [--strategy dance|pop|fusion]');
+      console.log('Uso: engine compose <artist-slug> <ep-slug> <track-number> <track-slug> "<titulo>" [--strategy club|dance|pop|fusion]');
       process.exit(1);
     }
 
-    let generated: { stylePrompt: string; lyricsWithMetatags: string; bpm: number };
-    if (strategy === 'pop') {
-      generated = generatePopCommercialTrack({
+    let generated: {
+      stylePrompt: string;
+      lyricsWithMetatags: string;
+      bpm: number;
+      musicalKey: string;
+      subgenre: string;
+      sunoVersion: string;
+      isInstrumental: boolean;
+      vocalElements: string;
+      defaultGenerationName: string;
+      excludeStyles: string;
+      paramWeirdness: number;
+      paramStyleInfluence: number;
+      paramAudioWeight: number;
+      paramVariety: string;
+      presets: {
+        preset1: string;
+        preset2: string;
+        preset3: string;
+        preset4: string;
+      };
+    };
+
+    if (strategy === 'club') {
+      const clubRes = generateClubAdvancedTrack({
+        title,
+        subgenre: 'Dark Disco, NY House, Dark House',
+        bpm: 125,
+        musicalKey: 'E minor',
+        vocalStyle: 'Vocoder',
+        vocalHook: `I love disco nights`,
+        sunoVersion: 'v6',
+      });
+      generated = {
+        stylePrompt: clubRes.stylePrompt,
+        lyricsWithMetatags: clubRes.lyricsWithMetatags,
+        bpm: clubRes.bpm,
+        musicalKey: clubRes.musicalKey,
+        subgenre: clubRes.subgenre,
+        sunoVersion: clubRes.sunoVersion,
+        isInstrumental: true,
+        vocalElements: 'Minimal vocoder hook chop',
+        defaultGenerationName: clubRes.defaultGenerationName,
+        excludeStyles: clubRes.excludeStyles,
+        paramWeirdness: 15,
+        paramStyleInfluence: 100,
+        paramAudioWeight: 50,
+        paramVariety: 'N',
+        presets: clubRes.presets,
+      };
+    } else if (strategy === 'pop') {
+      const popRes = generatePopCommercialTrack({
         theme: title,
         hookLine: `Esta es la señal de ${title}`,
       });
+      const defaultGen = formatSunoGenerationName(title, 1, 15, 100, 50, 'N', 'v6', false);
+      generated = {
+        stylePrompt: popRes.stylePrompt,
+        lyricsWithMetatags: popRes.lyricsWithMetatags,
+        bpm: popRes.bpm,
+        musicalKey: 'D minor',
+        subgenre: 'Commercial Pop Dance',
+        sunoVersion: 'v6',
+        isInstrumental: false,
+        vocalElements: 'Lead vocal & chorus harmonies',
+        defaultGenerationName: defaultGen,
+        excludeStyles: 'Death Metal, Noise, Drone, Free Jazz, Accordion',
+        paramWeirdness: 10,
+        paramStyleInfluence: 90,
+        paramAudioWeight: 70,
+        paramVariety: 'N',
+        presets: {
+          preset1: formatSunoGenerationName(title, 1, 0, 100, 50, 'N', 'v6', false),
+          preset2: formatSunoGenerationName(title, 2, 10, 90, 70, 'N', 'v6', false),
+          preset3: formatSunoGenerationName(title, 3, 20, 80, 70, 'H', 'v6', false),
+          preset4: formatSunoGenerationName(title, 4, 5, 95, 80, 'N', 'v6', false),
+        },
+      };
     } else if (strategy === 'fusion') {
-      generated = generateFusionTrack({
+      const fusionRes = generateFusionTrack({
         styleA: 'flamenco',
         styleB: 'dark synthwave',
         targetBpm: 124,
         theme: title,
         hookLine: `Bailando en el borde de ${title}`,
       });
+      const defaultGen = formatSunoGenerationName(title, 1, 15, 100, 50, 'N', 'v6', false);
+      generated = {
+        stylePrompt: fusionRes.stylePrompt,
+        lyricsWithMetatags: fusionRes.lyricsWithMetatags,
+        bpm: fusionRes.bpm,
+        musicalKey: 'A minor',
+        subgenre: 'Flamenco Synth Fusion',
+        sunoVersion: 'v6',
+        isInstrumental: false,
+        vocalElements: 'Flamenco vocal timbre with vocoder',
+        defaultGenerationName: defaultGen,
+        excludeStyles: 'Country, Polka, Accordion, Marching Band, Slap House',
+        paramWeirdness: 20,
+        paramStyleInfluence: 85,
+        paramAudioWeight: 60,
+        paramVariety: 'H',
+        presets: {
+          preset1: formatSunoGenerationName(title, 1, 0, 100, 50, 'N', 'v6', false),
+          preset2: formatSunoGenerationName(title, 2, 20, 85, 60, 'H', 'v6', false),
+          preset3: formatSunoGenerationName(title, 3, 30, 75, 70, 'H', 'v6', false),
+          preset4: formatSunoGenerationName(title, 4, 10, 90, 80, 'N', 'v6', false),
+        },
+      };
     } else {
-      generated = generateDanceClubTrack({
+      // 'dance' strategy
+      const danceRes = generateDanceClubTrack({
         subgenre: 'melodic synth dance',
         theme: title,
         bpm: 126,
         hookLine: `Feel the pulse of ${title}`,
       });
+      const defaultGen = formatSunoGenerationName(title, 1, 15, 100, 50, 'N', 'v6', true);
+      generated = {
+        stylePrompt: danceRes.stylePrompt,
+        lyricsWithMetatags: danceRes.lyricsWithMetatags,
+        bpm: danceRes.bpm,
+        musicalKey: 'D minor',
+        subgenre: 'Melodic Synth Dance',
+        sunoVersion: 'v6',
+        isInstrumental: true,
+        vocalElements: 'Minimal vocal chops',
+        defaultGenerationName: defaultGen,
+        excludeStyles: 'Acoustic Guitar, Country, Folk, Operatic Vocals, Banjo',
+        paramWeirdness: 15,
+        paramStyleInfluence: 100,
+        paramAudioWeight: 50,
+        paramVariety: 'N',
+        presets: {
+          preset1: formatSunoGenerationName(title, 1, 0, 100, 50, 'N', 'v6', true),
+          preset2: formatSunoGenerationName(title, 2, 15, 100, 50, 'N', 'v6', true),
+          preset3: formatSunoGenerationName(title, 3, 25, 85, 70, 'H', 'v6', true),
+          preset4: formatSunoGenerationName(title, 4, 10, 90, 80, 'N', 'v6', true),
+        },
+      };
     }
 
-    // Validación automática con Rúbrica 4D
-    const audit = evaluateSunoTrack({
-      stylePrompt: generated.stylePrompt,
-      lyricsWithMetatags: generated.lyricsWithMetatags,
-    });
+    // Auditoría de Calidad
+    let isApproved = false;
+    let auditScore = 0;
+    let auditSummary = '';
+
+    if (strategy === 'club') {
+      const clubAudit = evaluateClubPrompter({
+        generationName: generated.defaultGenerationName,
+        stylePrompt: generated.stylePrompt,
+        excludeStyles: generated.excludeStyles,
+        lyricsWithMetatags: generated.lyricsWithMetatags,
+      });
+      isApproved = clubAudit.passed;
+      auditScore = clubAudit.totalScore;
+      auditSummary = `Auditor Ralph Loop (6 Gates): ${clubAudit.totalScore}/10 (${clubAudit.passed ? 'APROBADA' : 'REQUIERE AJUSTES'})`;
+    } else {
+      const stdAudit = evaluateSunoTrack({
+        stylePrompt: generated.stylePrompt,
+        lyricsWithMetatags: generated.lyricsWithMetatags,
+      });
+      isApproved = stdAudit.passed;
+      auditScore = stdAudit.totalScore;
+      auditSummary = `Rúbrica 4D: ${stdAudit.totalScore}/10 (${stdAudit.passed ? 'APROBADA' : 'REQUIERE AJUSTES'})`;
+    }
 
     const tpl = loadTemplateFile('_cancion.tpl.md');
     const rendered = injectTemplate(tpl, {
@@ -201,20 +340,27 @@ switch (command) {
         artistName: artistSlug.replace(/-/g, ' ').toUpperCase(),
         epSlug,
         epTitle: epSlug.replace(/-/g, ' ').toUpperCase(),
+        subgenre: generated.subgenre,
         bpm: generated.bpm,
-        musicalKey: 'D minor',
-        sunoVersion: 'v3.5 / v4',
-        stylePrompt: generated.stylePrompt,
-        stylePromptLength: generated.stylePrompt.length,
-        lyricsWithMetatags: generated.lyricsWithMetatags,
-        vibeDescription: `Pista compuesta con estrategia "${strategy}". Puntaje de calidad: ${audit.totalScore}/10.`,
-        structureType: strategy.toUpperCase(),
-        vocalEffects: 'Reverb estéreo, compresión al frente',
-        dynamicDirectives: 'Subidas marcadas con caja y liberaciones potentes',
-        altPromptA: `${generated.stylePrompt}, fast tempo, energetic`,
-        altPromptB: `${generated.stylePrompt}, intimate acoustic elements`,
-        status: audit.passed ? 'draft' : 'needs_revision',
+        musicalKey: generated.musicalKey,
+        sunoVersion: generated.sunoVersion,
+        isInstrumental: generated.isInstrumental,
+        vocalElements: generated.vocalElements,
+        defaultGenerationName: generated.defaultGenerationName,
+        paramWeirdness: generated.paramWeirdness,
+        paramStyleInfluence: generated.paramStyleInfluence,
+        paramAudioWeight: generated.paramAudioWeight,
+        paramVariety: generated.paramVariety,
+        status: isApproved ? 'draft' : 'needs_revision',
         audioUrl: '',
+        stylePrompt: generated.stylePrompt,
+        excludeStyles: generated.excludeStyles,
+        lyricsWithMetatags: generated.lyricsWithMetatags,
+        vibeDescription: `Pista compuesta con estrategia "${strategy}". ${auditSummary}.`,
+        namingPreset1: generated.presets.preset1,
+        namingPreset2: generated.presets.preset2,
+        namingPreset3: generated.presets.preset3,
+        namingPreset4: generated.presets.preset4,
         take1Url: '(Pendiente de generar en Suno)',
         take1Rating: '—',
         take1Notes: 'Generación inicial creada con motor determinista',
@@ -224,8 +370,9 @@ switch (command) {
 
     const target = vault.saveSongTrackNote(artistSlug, epSlug, trackNum, trackSlug, rendered);
     console.log(`\n🎶 Canción compuesta exitosamente (Estrategia: ${strategy}):\n   📄 ${target}`);
-    console.log(`   📊 Evaluación Rúbrica 4D: ${audit.totalScore}/10 (${audit.passed ? 'APROBADA' : 'REQUIERE AJUSTES'})`);
-    console.log(`   🔤 Caracteres Style Prompt: ${generated.stylePrompt.length} / 200\n`);
+    console.log(`   📊 ${auditSummary}`);
+    console.log(`   🏷️  Nombre de Generación: ${generated.defaultGenerationName}`);
+    console.log(`   🔤 Caracteres Style Prompt: ${generated.stylePrompt.length}\n`);
     break;
   }
 
@@ -236,31 +383,74 @@ switch (command) {
       process.exit(1);
     }
     const content = fs.readFileSync(targetFile, 'utf8');
-    const styleMatch = content.match(/## 1\. Suno Style of Music Prompt[\s\S]*?```text\r?\n([\s\S]*?)\r?\n```/);
-    const lyricsMatch = content.match(/## 2\. Letra y Estructura con Metatags[\s\S]*?```text\r?\n([\s\S]*?)\r?\n```/);
 
+    // Extraer campos del modo avanzado / suno-prompter
+    const namingMatch = content.match(/## [^\n]*1\.\s*Nombre de la Pista[^\n]*\r?\n>[\s\S]*?```text\r?\n([\s\S]*?)\r?\n```/)
+      || content.match(/default_generation_name:\s*"([^"]+)"/);
+    const generationName = namingMatch ? namingMatch[1].trim() : undefined;
+
+    const styleMatch = content.match(/## [^\n]*(?:Style of Music|Casillero de Estilo)[^\n]*\r?\n>[\s\S]*?```text\r?\n([\s\S]*?)\r?\n```/)
+      || content.match(/## 1\. Suno Style of Music Prompt[\s\S]*?```text\r?\n([\s\S]*?)\r?\n```/);
     const stylePrompt = styleMatch ? styleMatch[1].trim() : '';
+
+    const excludeMatch = content.match(/## [^\n]*(?:Exclude Styles|Exclusiones Negativas)[^\n]*\r?\n>[\s\S]*?```text\r?\n([\s\S]*?)\r?\n```/);
+    const excludeStyles = excludeMatch ? excludeMatch[1].trim() : undefined;
+
+    const lyricsMatch = content.match(/## [^\n]*(?:Lyrics & Structure|Letra y Estructura con Metatags)[^\n]*\r?\n>[\s\S]*?```text\r?\n([\s\S]*?)\r?\n```/)
+      || content.match(/## 2\. Letra y Estructura con Metatags[\s\S]*?```text\r?\n([\s\S]*?)\r?\n```/);
     const lyricsWithMetatags = lyricsMatch ? lyricsMatch[1].trim() : '';
 
-    const audit = evaluateSunoTrack({ stylePrompt, lyricsWithMetatags });
+    const isAdvancedClub = generationName !== undefined || excludeStyles !== undefined || content.includes('mode: "Advanced"');
 
     console.log(`\n═════════════════════════════════════════════════════════════════════`);
     console.log(`📋 RESULTADO DE AUDITORÍA SUNO: ${targetFile}`);
     console.log(`═════════════════════════════════════════════════════════════════════`);
-    console.log(`Puntaje Total: ${audit.totalScore} / 10.0 [${audit.passed ? '✅ APROBADO' : '❌ RECHAZADO'}]`);
-    console.log(`  • Style Prompt Quality: ${audit.dimensions.stylePromptQuality} / 2.5`);
-    console.log(`  • Metatag Structure:    ${audit.dimensions.metatagStructure} / 2.5`);
-    console.log(`  • Lyrical Cadence:      ${audit.dimensions.lyricalCadence} / 2.5`);
-    console.log(`  • Lexical Hygiene:      ${audit.dimensions.lexicalHygiene} / 2.5`);
-    console.log(`---------------------------------------------------------------------`);
-    console.log(`Métricas: Caracteres Style = ${audit.metrics.stylePromptLength}/200 | Metatags = ${audit.metrics.metatagCount} | Versos = ${audit.metrics.verseCount}`);
-    if (audit.observations.length > 0) {
-      console.log(`\nObservaciones:`);
-      for (const o of audit.observations) console.log(`  ⚠️ ${o}`);
-    }
-    if (audit.remediationDirectives.length > 0) {
-      console.log(`\nDirectivas de Remediación:`);
-      for (const d of audit.remediationDirectives) console.log(`  🔧 ${d}`);
+
+    if (isAdvancedClub) {
+      const clubAudit = evaluateClubPrompter({
+        generationName,
+        stylePrompt,
+        excludeStyles,
+        lyricsWithMetatags,
+      });
+
+      console.log(`Modo: SUNO v6 MODO AVANZADO (suno-prompter Ralph Loop)`);
+      console.log(`Puntaje Total: ${clubAudit.totalScore} / 10.0 [${clubAudit.passed ? '✅ APROBADO (>= 9.5)' : '❌ RECHAZADO'}]`);
+      console.log(`---------------------------------------------------------------------`);
+      console.log(`Filtros de Calidad (6 Gates):`);
+      console.log(`  • Gate 1 (Naming Standard):     ${clubAudit.gates.gate1_naming.passed ? '✅' : '❌'} (${clubAudit.gates.gate1_naming.score}/1.66) ${clubAudit.gates.gate1_naming.observation ? `- ${clubAudit.gates.gate1_naming.observation}` : ''}`);
+      console.log(`  • Gate 2 (Micro-Tags Secciones): ${clubAudit.gates.gate2_microTags.passed ? '✅' : '❌'} (${clubAudit.gates.gate2_microTags.score}/1.67) ${clubAudit.gates.gate2_microTags.observation ? `- ${clubAudit.gates.gate2_microTags.observation}` : ''}`);
+      console.log(`  • Gate 3 (Cómputo Compases):     ${clubAudit.gates.gate3_barCounts.passed ? '✅' : '❌'} (${clubAudit.gates.gate3_barCounts.score}/1.67) ${clubAudit.gates.gate3_barCounts.observation ? `- ${clubAudit.gates.gate3_barCounts.observation}` : ''}`);
+      console.log(`  • Gate 4 (Style Box Completo):   ${clubAudit.gates.gate4_styleBox.passed ? '✅' : '❌'} (${clubAudit.gates.gate4_styleBox.score}/1.67) ${clubAudit.gates.gate4_styleBox.observation ? `- ${clubAudit.gates.gate4_styleBox.observation}` : ''}`);
+      console.log(`  • Gate 5 (Exclude Styles):      ${clubAudit.gates.gate5_excludeStyles.passed ? '✅' : '❌'} (${clubAudit.gates.gate5_excludeStyles.score}/1.66) ${clubAudit.gates.gate5_excludeStyles.observation ? `- ${clubAudit.gates.gate5_excludeStyles.observation}` : ''}`);
+      console.log(`  • Gate 6 (Aislamiento de Drop): ${clubAudit.gates.gate6_dropIsolation.passed ? '✅' : '❌'} (${clubAudit.gates.gate6_dropIsolation.score}/1.67) ${clubAudit.gates.gate6_dropIsolation.observation ? `- ${clubAudit.gates.gate6_dropIsolation.observation}` : ''}`);
+
+      if (clubAudit.observations.length > 0) {
+        console.log(`\nObservaciones:`);
+        for (const o of clubAudit.observations) console.log(`  ⚠️ ${o}`);
+      }
+      if (clubAudit.remediationDirectives.length > 0) {
+        console.log(`\nDirectivas de Remediación (Ralph Loop):`);
+        for (const d of clubAudit.remediationDirectives) console.log(`  🔧 ${d}`);
+      }
+    } else {
+      const audit = evaluateSunoTrack({ stylePrompt, lyricsWithMetatags });
+      console.log(`Modo: ESTÁNDAR 4D RUBRIC`);
+      console.log(`Puntaje Total: ${audit.totalScore} / 10.0 [${audit.passed ? '✅ APROBADO' : '❌ RECHAZADO'}]`);
+      console.log(`  • Style Prompt Quality: ${audit.dimensions.stylePromptQuality} / 2.5`);
+      console.log(`  • Metatag Structure:    ${audit.dimensions.metatagStructure} / 2.5`);
+      console.log(`  • Lyrical Cadence:      ${audit.dimensions.lyricalCadence} / 2.5`);
+      console.log(`  • Lexical Hygiene:      ${audit.dimensions.lexicalHygiene} / 2.5`);
+      console.log(`---------------------------------------------------------------------`);
+      console.log(`Métricas: Caracteres Style = ${audit.metrics.stylePromptLength}/200 | Metatags = ${audit.metrics.metatagCount} | Versos = ${audit.metrics.verseCount}`);
+      if (audit.observations.length > 0) {
+        console.log(`\nObservaciones:`);
+        for (const o of audit.observations) console.log(`  ⚠️ ${o}`);
+      }
+      if (audit.remediationDirectives.length > 0) {
+        console.log(`\nDirectivas de Remediación:`);
+        for (const d of audit.remediationDirectives) console.log(`  🔧 ${d}`);
+      }
     }
     console.log(`═════════════════════════════════════════════════════════════════════\n`);
     break;

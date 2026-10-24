@@ -3,3 +3,6 @@ node_modules/
 *.log
 Suno-Engine/work/
 .agents/scratch/
+Suno-Vault/.obsidian/workspace.json
+Suno-Vault/.obsidian/workspace-mobile.json
+Suno-Vault/00 Inbox/Archive/

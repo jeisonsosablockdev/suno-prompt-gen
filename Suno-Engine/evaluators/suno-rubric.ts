@@ -215,3 +215,154 @@ export function evaluateSunoTrack(input: SunoPromptEvaluationInput): SunoRubricR
     },
   };
 }
+
+/* ========================================================================= */
+/*       AUDITOR DE 6 FILTROS DE SUNO-PROMPTER (RALPH LOOP AUDITOR)          */
+/* ========================================================================= */
+
+export interface ClubPromptAuditInput {
+  generationName?: string;
+  stylePrompt: string;
+  excludeStyles?: string;
+  lyricsWithMetatags: string;
+}
+
+export interface ClubPromptAuditReport {
+  totalScore: number;
+  passed: boolean;
+  threshold: number; // 9.5
+  gates: {
+    gate1_naming: { passed: boolean; score: number; observation?: string };
+    gate2_microTags: { passed: boolean; score: number; observation?: string };
+    gate3_barCounts: { passed: boolean; score: number; observation?: string };
+    gate4_styleBox: { passed: boolean; score: number; observation?: string };
+    gate5_excludeStyles: { passed: boolean; score: number; observation?: string };
+    gate6_dropIsolation: { passed: boolean; score: number; observation?: string };
+  };
+  observations: string[];
+  remediationDirectives: string[];
+}
+
+export const CLUB_PROMPTER_THRESHOLD = 9.5;
+
+export function evaluateClubPrompter(input: ClubPromptAuditInput): ClubPromptAuditReport {
+  const observations: string[] = [];
+  const remediationDirectives: string[] = [];
+
+  // Gate 1: Naming Convention (I {title} {take} Max W:{w} S:{s} A:{a} V:{v} {version})
+  let g1Score = 1.66;
+  let g1Passed = true;
+  let g1Obs: string | undefined;
+
+  const namingRegex = /^(I|V)\s+[a-z0-9\s-]+\s+\d+\s+Max\s+W:\d+\s+S:\d+\s+A:\d+\s+V:[A-Z]\s+v\d+$/i;
+  if (!input.generationName) {
+    g1Score = 0;
+    g1Passed = false;
+    g1Obs = 'Falta el nombre de generación paramétrico.';
+    observations.push(g1Obs);
+    remediationDirectives.push('Definir el nombre en formato "I {título} {take} Max W:{w} S:{s} A:{a} V:{v} {versión}" con versión al final.');
+  } else if (!namingRegex.test(input.generationName.trim())) {
+    g1Score = 0.5;
+    g1Passed = false;
+    g1Obs = `Formato de nombre inválido: "${input.generationName}". La versión del motor (ej. v6) debe estar estrictamente al final.`;
+    observations.push(g1Obs);
+    remediationDirectives.push('Ajustar el nombre al estándar: "I {título} {take} Max W:{w} S:{s} A:{a} V:{v} {versión}".');
+  }
+
+  // Gate 2: Micro-Metatags por sección
+  let g2Score = 1.67;
+  let g2Passed = true;
+  let g2Obs: string | undefined;
+
+  const hasMicroTags = /\[Style:[^\]]+\]\s*\[Mood:[^\]]+\]\s*\[Energy:[^\]]+\]/i.test(input.lyricsWithMetatags);
+  if (!hasMicroTags) {
+    g2Score = 0.5;
+    g2Passed = false;
+    g2Obs = 'La letra no contiene la cadena de micro-tags [Style: ...][Mood: ...][Energy: ...] por sección.';
+    observations.push(g2Obs);
+    remediationDirectives.push('Inyectar en cada sección la cadena [Style: ...][Mood: ...][Energy: ...][Beat: ...][Instrument: ...][FX: ...].');
+  }
+
+  // Gate 3: Bar Count Directives [X bars of ...]
+  let g3Score = 1.67;
+  let g3Passed = true;
+  let g3Obs: string | undefined;
+
+  const barMatches = input.lyricsWithMetatags.match(/\[\d+\s+bars\s+[^\]]+\]/gi) || [];
+  if (barMatches.length < 3) {
+    g3Score = 0.5;
+    g3Passed = false;
+    g3Obs = `Solo se detectaron ${barMatches.length} directivas de compases. Se requieren al menos 3 bloques explícitos de compases (ej. [16 bars of...]).`;
+    observations.push(g3Obs);
+    remediationDirectives.push('Definir la duración en compases para cada sección [X bars of description...].');
+  }
+
+  // Gate 4: Style Box con Línea Maestra y Resumen de Estructura
+  let g4Score = 1.67;
+  let g4Passed = true;
+  let g4Obs: string | undefined;
+
+  const styleText = input.stylePrompt || '';
+  const hasMasterTags = /\[Style:[^\]]+\]/i.test(styleText);
+  const hasStructureNarrative = /(bars|structure|bpm|minor|major)/i.test(styleText);
+
+  if (!hasMasterTags || !hasStructureNarrative) {
+    g4Score = 0.6;
+    g4Passed = false;
+    g4Obs = 'El Style Box debe combinar la línea maestra de corchetes con la narración cronológica de la estructura por compases.';
+    observations.push(g4Obs);
+    remediationDirectives.push('Añadir al Style Box la línea de corchetes maestros seguida del resumen cronológico de compases y BPM/Key.');
+  }
+
+  // Gate 5: Exclude Styles presente con al menos 3 exclusiones
+  let g5Score = 1.66;
+  let g5Passed = true;
+  let g5Obs: string | undefined;
+
+  const excludeList = (input.excludeStyles || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (excludeList.length < 3) {
+    g5Score = 0.4;
+    g5Passed = false;
+    g5Obs = `El bloque Exclude Styles solo contiene ${excludeList.length} exclusiones. Se requieren al menos 3 etiquetas negativas.`;
+    observations.push(g5Obs);
+    remediationDirectives.push('Poblar el casillero Exclude Styles con géneros e instrumentos a bloquear (ej. EDM, Pop, Acoustic Guitar).');
+  }
+
+  // Gate 6: Aislamiento del Drop (sin exceso de letra)
+  let g6Score = 1.67;
+  let g6Passed = true;
+  let g6Obs: string | undefined;
+
+  const dropSections = input.lyricsWithMetatags.match(/\[\s*(Drop|Full Drop)[\s\S]*?(?=\[\s*(Break|Outro|Verse|Drop)|$)/gi) || [];
+  for (const ds of dropSections) {
+    const textLines = ds.split('\n').filter(l => l.trim().length > 0 && !l.trim().startsWith('['));
+    if (textLines.length > 8) {
+      g6Score = 0.8;
+      g6Passed = false;
+      g6Obs = 'Detectada letra excesivamente larga en una sección de Drop. Debe dejarse espacio para el sintetizador y el bajo.';
+      observations.push(g6Obs);
+      remediationDirectives.push('Reducir la letra en el Drop a vocal chops o frases cortas repetitivas.');
+      break;
+    }
+  }
+
+  const rawTotal = g1Score + g2Score + g3Score + g4Score + g5Score + g6Score;
+  const totalScore = Number(Math.min(10.0, Math.max(0, rawTotal)).toFixed(2));
+  const passed = totalScore >= CLUB_PROMPTER_THRESHOLD && g1Passed && g2Passed && g3Passed && g4Passed && g5Passed && g6Passed;
+
+  return {
+    totalScore,
+    passed,
+    threshold: CLUB_PROMPTER_THRESHOLD,
+    gates: {
+      gate1_naming: { passed: g1Passed, score: g1Score, observation: g1Obs },
+      gate2_microTags: { passed: g2Passed, score: g2Score, observation: g2Obs },
+      gate3_barCounts: { passed: g3Passed, score: g3Score, observation: g3Obs },
+      gate4_styleBox: { passed: g4Passed, score: g4Score, observation: g4Obs },
+      gate5_excludeStyles: { passed: g5Passed, score: g5Score, observation: g5Obs },
+      gate6_dropIsolation: { passed: g6Passed, score: g6Score, observation: g6Obs },
+    },
+    observations,
+    remediationDirectives,
+  };
+}
