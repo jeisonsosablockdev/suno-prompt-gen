@@ -1,0 +1,22 @@
+{
+  "name": "suno-prompt-gen",
+  "version": "1.0.0",
+  "description": "Generador agéntico y determinista de prompts para SUNO AI con arquitectura SDD y Bóveda Obsidian",
+  "type": "module",
+  "scripts": {
+    "sdd": "node Suno-Engine/bin/engine.ts sdd",
+    "vault": "node Suno-Engine/bin/engine.ts vault",
+    "audit": "node Suno-Engine/bin/engine.ts audit",
+    "test": "node Suno-Engine/bin/engine.ts test",
+    "help": "node Suno-Engine/bin/engine.ts help"
+  },
+  "keywords": [
+    "suno",
+    "music-ai",
+    "prompt-generator",
+    "antigravity",
+    "obsidian",
+    "sdd",
+    "typescript"
+  ]
+}
