@@ -6,6 +6,12 @@ ep: "{{track.epSlug}}"
 subgenre: "{{track.subgenre}}"
 bpm: {{track.bpm}}
 musical_key: "{{track.musicalKey}}"
+total_bars: {{track.totalBars}}
+duration_calculated_seconds: {{track.calculatedSeconds}}
+duration_calculated: "{{track.calculatedDurationFormatted}}"
+additional_seconds: 2
+duration_exact_seconds: {{track.durationExactSeconds}}
+duration_exact: "{{track.exactDurationFormatted}}"
 suno_version: "{{track.sunoVersion}}"
 mode: "Advanced"
 is_instrumental: {{track.isInstrumental}}
@@ -24,7 +30,7 @@ updated_at: "{{date}}"
 
 # {{track.numberFormatted}} - {{track.title}} (Club Extended Mix)
 *Artista:* [[Artistas/{{track.artistSlug}}/_artista|{{track.artistName}}]] | *EP:* [[Artistas/{{track.artistSlug}}/{{track.epSlug}}/_ep|{{track.epTitle}}]]
-*Configuración Base:* `{{track.bpm}} BPM` | `{{track.musicalKey}}` | `Suno {{track.sunoVersion}} Advanced`
+*Configuración Base:* `{{track.bpm}} BPM` | `{{track.musicalKey}}` | `{{track.totalBars}} compases ({{track.exactDurationFormatted}} = {{track.durationExactSeconds}}s [física + 2s adicionales])` | `Suno {{track.sunoVersion}} Advanced`
 
 > [!NOTE]
 > **Vibe & Dirección Sonora:** {{track.vibeDescription}}
@@ -72,14 +78,22 @@ updated_at: "{{date}}"
 
 | Preset | Nombre de Generación | W (Weirdness) | S (Style Inf.) | A (Audio) | V (Variety) | Objetivo Sonoro |
 |---|---|:---:|:---:|:---:|:---:|---|
-| **Preset 1 (Strict Club)** | `{{track.namingPreset1}}` | 0 | 100 | 50 | N | Máxima adherencia a compases |
-| **Preset 2 (Analog Warmth)** | `{{track.namingPreset2}}` | 15 | 100 | 50 | N | **Recomendado:** Calidez y modulación analógica |
+| **Preset 1 (Strict Club)** | `{{track.namingPreset1}}` | 0 | 100 | 50 | N | Máxima adherencia estricta a compases |
+| **Preset 2 (Analog Warmth - v1)** | `{{track.namingPreset2}}` | 15 | 85 | 50 | N | **Recomendado (v1):** Calidez y obediencia rítmica equilibrada |
 | **Preset 3 (Underground Edge)** | `{{track.namingPreset3}}` | 25 | 85 | 70 | H | Texturas crudas y mayor variación |
 | **Preset 4 (High Fidelity)** | `{{track.namingPreset4}}` | 10 | 90 | 80 | N | Máster pulido con graves controlados |
 
 ---
 
-## 📊 6. Bitácora de Generaciones en Suno
-| Take | Nombre Utilizado | Enlace de Audio | Calificación (1-5★) | Observaciones de Mezcla / Drop |
+## 📊 6. Control de Versiones y Bitácora de Takes
+| Versión / Take | Nombre Utilizado | Enlace de Audio | Calificación (1-5★) | Observaciones de Mezcla / Parámetros |
 |---|---|---|:---:|---|
-| Take 1 | `{{track.namingPreset2}}` | {{track.take1Url}} | {{track.take1Rating}} | {{track.take1Notes}} |
+| **v1 (Take 1)** | `{{track.defaultGenerationName}}` | {{track.take1Url}} | {{track.take1Rating}} | {{track.take1Notes}} |
+
+---
+
+## 🗄️ 7. Historial de Versiones Anteriores (Archivadas)
+> Las versiones previas se archivan aquí automáticamente como bloques colapsables para garantizar la trazabilidad idempotente de prompts:
+
+{{track.versionHistoryDetails}}
+

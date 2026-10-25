@@ -19,6 +19,7 @@ El sistema separa físicamente el motor determinista en TypeScript (**`Suno-Engi
 | **Canción** | Componer canción completa | `node Suno-Engine/bin/engine.ts compose <artist-slug> <ep-slug> <track-num> <slug> "<titulo>" [--strategy dance\|pop\|fusion]` |
 | **Auditoría** | Validar prompt y letra en < 2ms | `node Suno-Engine/bin/engine.ts validate <ruta.md>` |
 | **SDD** | Ciclo de vida de tareas formales | `node Suno-Engine/bin/engine.ts sdd <init\|preview\|approve-spec\|evaluate\|approve-deliverable\|list>` |
+| **Glosario** | Escanear, listar y agregar tags de sonido | `node Suno-Engine/bin/engine.ts glossary <scan\|list\|add> [args]` |
 | **Bóveda** | Explorar catálogo y búsqueda | `node Suno-Engine/bin/engine.ts vault <artists\|specs\|search> [args]` |
 | **Tests** | Ejecutar tests en TypeScript | `node Suno-Engine/bin/engine.ts test` |
 
@@ -65,7 +66,8 @@ Antes de redactar o ajustar cualquier prompt o letra, debes consultar los `SKILL
    - Arquitecturas completas para Dance/EDM, Pop comercial, Rock alternativo y Urbano.
 3. **`suno-style-catalog`** ([`.agents/skills/suno-style-catalog/SKILL.md`](./.agents/skills/suno-style-catalog/SKILL.md)):
    - Fórmula de 4 partes para el Style Prompt: $[Subgénero] + [Instrumentos] + [Vibe] + [BPM / Key]$.
-   - Límite duro de $\le 200$ caracteres en el casillero de estilo.
+   - Límite estricto de caracteres: $\le 200$ caracteres en Modo Básico y $\le 1000$ caracteres en Modo Avanzado (sweet spot 250 - 650 caracteres).
+   - **Regla de Cero Estructura en el Casillero de Estilo:** Prohibido terminantemente incluir directivas o narrativas de estructura (ej. 'Intro 16 bars', 'Break for 4 bars', 'Drop for 24 bars') dentro del casillero Style of Music. El Style Box es exclusivamente para elementos tímbricos, tempo, escala, instrumentos y producción física. Toda la estructura y cómputo de compases pertenecen únicamente al casillero de letra (Lyrics Box).
    - **Prohibición estricta de nombres de artistas comerciales reales:** Descomponer siempre en firmas tímbricas y de producción.
 
 ---
@@ -74,3 +76,7 @@ Antes de redactar o ajustar cualquier prompt o letra, debes consultar los `SKILL
 1. **`PreToolUse`:** Bloquea cualquier escritura no autorizada directamente en `Suno-Vault/Artistas/` que no haya sido validada por el evaluador o aprobada en el ciclo SDD.
 2. **`Stop` (Ralph Loop):** Impide cerrar el turno de un borrador si la Rúbrica 4D no alcanza la nota de corte ($\ge 8.5 / 10.0$).
 3. **Refinamiento No Destructivo:** Si editas una nota existente en la bóveda, `VaultGateway.createSafetyBackup` respalda automáticamente la versión previa en `Suno-Vault/00 Inbox/Archive/backups/`.
+4. **Cálculo Físico de Duración (Anti-Complacencia Matemática & Protocolo Grill-Me):** Prohibido asumir colas de reverberación ficticias para justificar discrepancias de tiempo. La duración se calcula estrictamente como $\text{Segundos} = \text{Compases} \times \frac{240}{\text{BPM}}$. Si la estructura no cubre el tiempo solicitado por más de 5 segundos, el agente DEBE calcular los compases faltantes y presentar opciones arquitectónicas concretas al usuario (mediante preguntas interactivas o grill-me) para decidir qué sección extender.
+5. **Filtro de Elementos Puros y Límite de 1000 Caracteres en Style Box:** Prohibido exceder 1000 caracteres en Style of Music o filtrar palabras clave de compases/estructura dentro de dicho casillero. Si se detecta fuga estructural, el evaluador reprobará Gate 4 inmediatamente.
+6. **Límite Físico de 5000 Caracteres en Lyrics Box (Gate 7 Anti-Trimming):** Suno recorta silenciosamente cualquier contenido que exceda los 5,000 caracteres con la advertencia *"We trimmed your paste to fit the 5000-character limit"*, mutilando los outros y metatags de finalización. El casillero de letra (Lyrics Box) DEBE ser estrictamente $\le 5000$ caracteres (sweet spot: 2,500 a 4,200 caracteres para club extended mixes). Gate 7 reprueba inmediatamente cualquier composición que exceda 5,000 caracteres.
+7. **Acumulación Idempotente de Versiones (Stacking Colapsable):** Toda nueva versión de una canción (`v2`, `v3`, etc.) DEBE mantener activa y visible la última versión al inicio de la nota, mientras que las versiones anteriores se archivan automáticamente e de forma idempotente en reversa cronológica en la Sección 7 (`## 🗄️ 7. Historial de Versiones Anteriores (Archivadas)`) dentro de bloques colapsables HTML (`<details><summary>📦 Versión X ...</summary>...</details>`). Jamás se sobreescribirá una nota eliminando el historial previo.

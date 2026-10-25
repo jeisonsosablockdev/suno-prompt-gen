@@ -566,16 +566,69 @@ ${rawDraft.replace(/^---[\s\S]*?---\s*/, '')}
     return targetFile;
   }
 
-  saveSongTrackNote(artistSlug: string, epSlug: string, trackNumber: number, trackSlug: string, content: string): string {
+  getSongTrackPath(artistSlug: string, epSlug: string, trackNumber: number, trackSlug: string): string {
     const cleanArtist = this.sanitizeSlug(artistSlug);
     const cleanEP = this.sanitizeSlug(epSlug);
     const cleanTrack = this.sanitizeSlug(trackSlug);
     const epDir = path.join(this.getArtistsDir(), cleanArtist, cleanEP);
-    this.ensureDir(epDir);
     const num = String(trackNumber).padStart(2, '0');
-    const targetFile = path.join(epDir, `${num} - ${cleanTrack}.md`);
+    return path.join(epDir, `${num} - ${cleanTrack}.md`);
+  }
+
+  saveSongTrackNote(artistSlug: string, epSlug: string, trackNumber: number, trackSlug: string, content: string): string {
+    const targetFile = this.getSongTrackPath(artistSlug, epSlug, trackNumber, trackSlug);
+    this.ensureDir(path.dirname(targetFile));
     this.createSafetyBackup(targetFile);
     fs.writeFileSync(targetFile, content, 'utf8');
     return targetFile;
   }
+}
+
+/**
+ * Extrae y acumula versiones previas de prompts en bloques colapsables <details>
+ * para garantizar la trazabilidad idempotente de prompts dentro de la misma nota.
+ */
+export function extractArchivedVersions(
+  existingContent: string,
+  newGenerationName: string,
+  newStylePrompt: string,
+  newLyricsWithMetatags: string
+): string {
+  if (!existingContent || !existingContent.trim()) {
+    return '*(Esta es la primera versión creada de la canción; las futuras iteraciones se archivarán aquí automáticamente como bloques colapsables).*';
+  }
+
+  const titleMatch = existingContent.match(/## [^\n]*1\.\s*Nombre de la Pista[^\n]*\r?\n>[\s\S]*?```text\r?\n([\s\S]*?)\r?\n```/);
+  const styleMatch = existingContent.match(/## [^\n]*(?:Style of Music|Casillero de Estilo)[^\n]*\r?\n>[\s\S]*?```text\r?\n([\s\S]*?)\r?\n```/);
+  const excludeMatch = existingContent.match(/## [^\n]*(?:Exclude Styles|Exclusiones Negativas)[^\n]*\r?\n>[\s\S]*?```text\r?\n([\s\S]*?)\r?\n```/);
+  const lyricsMatch = existingContent.match(/## [^\n]*(?:Lyrics & Structure|Casillero de Letra)[^\n]*\r?\n>[\s\S]*?```text\r?\n([\s\S]*?)\r?\n```/);
+
+  // Extraer bloques <details> existentes en la nota
+  const existingDetails = existingContent.match(/<details[\s\S]*?<\/details>/gi) || [];
+
+  if (!styleMatch || !lyricsMatch) {
+    return existingDetails.length > 0
+      ? existingDetails.join('\n\n')
+      : '*(Esta es la primera versión creada de la canción; las futuras iteraciones se archivarán aquí automáticamente como bloques colapsables).*';
+  }
+
+  const prevTitle = titleMatch ? titleMatch[1].trim() : 'Generación previa';
+  const prevStyle = styleMatch[1].trim();
+  const prevExclude = excludeMatch ? excludeMatch[1].trim() : '';
+  const prevLyrics = lyricsMatch[1].trim();
+
+  // Comprobar idempotencia: si el prompt previo es idéntico al nuevo, no duplicar el archivo histórico
+  const isIdentical = (prevStyle === newStylePrompt.trim()) && (prevLyrics === newLyricsWithMetatags.trim()) && (prevTitle === newGenerationName.trim());
+  if (isIdentical) {
+    return existingDetails.length > 0
+      ? existingDetails.join('\n\n')
+      : '*(Esta es la primera versión creada de la canción; las futuras iteraciones se archivarán aquí automáticamente como bloques colapsables).*';
+  }
+
+  // Determinar número de versión archivada
+  const versionNum = existingDetails.length + 1;
+  const newDetailBlock = `<details>\n<summary>📦 <b>Versión ${versionNum}</b> — <code>${prevTitle}</code></summary>\n\n#### 🎛️ Title Box\n\`\`\`text\n${prevTitle}\n\`\`\`\n\n#### 🎧 Style of Music Box (${prevStyle.length} car.)\n\`\`\`text\n${prevStyle}\n\`\`\`\n\n#### 🚫 Exclude Styles Box\n\`\`\`text\n${prevExclude}\n\`\`\`\n\n#### 📝 Lyrics Box (${prevLyrics.length} car.)\n\`\`\`text\n${prevLyrics}\n\`\`\`\n\n</details>`;
+
+  // Apilar la versión archivada más reciente en la parte superior (orden cronológico inverso)
+  return [newDetailBlock, ...existingDetails].join('\n\n');
 }
