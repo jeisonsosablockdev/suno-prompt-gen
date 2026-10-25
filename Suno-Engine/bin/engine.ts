@@ -15,7 +15,7 @@ import path from 'node:path';
 import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { TaskOrchestrator } from '../core/orchestrator.ts';
-import { VaultGateway } from '../core/vault-gateway.ts';
+import { VaultGateway, extractArchivedVersions } from '../core/vault-gateway.ts';
 import { injectTemplate, loadTemplateFile } from '../core/template-injector.ts';
 import { evaluateSunoTrack, evaluateClubPrompter } from '../evaluators/suno-rubric.ts';
 import { generateDanceClubTrack } from '../strategies/dance-club.ts';
@@ -23,6 +23,7 @@ import { generatePopCommercialTrack } from '../strategies/pop-commercial.ts';
 import { generateFusionTrack } from '../strategies/fusion.ts';
 import { generateTagDensePrompt } from '../strategies/tag-dense.ts';
 import { generateClubAdvancedTrack, formatSunoGenerationName } from '../strategies/club-advanced.ts';
+import { GlossaryManager } from '../core/glossary-manager.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -52,6 +53,16 @@ Comandos de Composición & Bóveda Musical:
 
   validate <archivo.md>
      Ejecuta la Rúbrica 4D y el Auditor Ralph Loop de 6 filtros en < 2ms
+
+Comandos de Glosario e Ingestión de Tags:
+  glossary scan "<texto-o-prompt>"
+     Analiza un prompt o lista de palabras, detectando cuáles ya existen y cuáles son nuevas.
+
+  glossary list
+     Muestra el inventario completo de tags clasificados por categoría.
+
+  glossary add --category "<cat>" --tag "<tag>" --subcat "<subcat>" --desc "<desc>" --subgenre "<subgenre>" --example "<example>"
+     Inserta un nuevo tag auditado en los glosarios de referencias del motor.
 
 Comandos SDD y Gobernanza:
   sdd <init|preview|approve-spec|evaluate|approve-deliverable|list>
@@ -121,7 +132,28 @@ switch (command) {
     }
 
     const tpl = loadTemplateFile('_ep.tpl.md');
-    const masterStyle = `${genre.toLowerCase()}, analog synthesizer, gated reverb drums, emotional vibe, 120 bpm`;
+    const masterStyle = `${genre.toLowerCase()}, analog synthesizer, raw drum machine, hypnotic club groove, 130 bpm`;
+    
+    const epDir = path.join(vault.getVaultDir(), 'Artistas', artistSlug, epSlug);
+    let trackTable = '| 01 | Pista 1 | 120 BPM | [[01 - pista-1]] |\n| 02 | Pista 2 | 124 BPM | [[02 - pista-2]] |';
+    let trackCount = 3;
+    if (fs.existsSync(epDir)) {
+      const trackFiles = fs.readdirSync(epDir).filter(f => /^\d{2}\s*-\s*.+\.md$/.test(f)).sort();
+      if (trackFiles.length > 0) {
+        trackCount = trackFiles.length;
+        trackTable = trackFiles.map((tf) => {
+          const content = fs.readFileSync(path.join(epDir, tf), 'utf8');
+          const titleMatch = content.match(/title:\s*"([^"]+)"/);
+          const bpmMatch = content.match(/bpm:\s*(\d+)/);
+          const tName = titleMatch ? titleMatch[1] : tf.replace(/\.md$/, '');
+          const tBpm = bpmMatch ? `${bpmMatch[1]} BPM` : '130 BPM';
+          const tNum = tf.slice(0, 2);
+          const link = tf.replace(/\.md$/, '');
+          return `| ${tNum} | ${tName} | ${tBpm} | [[${link}]] |`;
+        }).join('\n');
+      }
+    }
+
     const rendered = injectTemplate(tpl, {
       ep: {
         title,
@@ -131,19 +163,33 @@ switch (command) {
         genre,
         masterStylePrompt: masterStyle,
         masterStylePromptLength: masterStyle.length,
-        totalTracks: 3,
+        totalTracks: trackCount,
         conceptNarrative: concept,
-        narrativeArc: `1. Apertura: Inmersión en ${concept}\n2. Nudo: Tensión rítmica\n3. Cierre: Resolución melódica`,
-        tracklistMarkdownTable: '| 01 | Pista 1 | 120 BPM | [[01 - pista-1]] |\n| 02 | Pista 2 | 124 BPM | [[02 - pista-2]] |',
-        baseBpm: '120 - 124 BPM',
-        mixDirectives: 'Mezcla amplia estéreo, compresión sidechain sutil',
-        instrumentPalette: 'Moog bass, Roland Juno pads, LinnDrum kit',
+        narrativeArc: `1. Apertura: Inmersión en ${concept}\n2. Nudo: Tensión rítmica de club con percusiones 707/727\n3. Cierre: Resolución bailable extendida para DJ set`,
+        tracklistMarkdownTable: trackTable,
+        baseBpm: '125 - 130 BPM',
+        mixDirectives: 'Mezcla analógica seca, voz centrada e íntima sin reverb larga, graves bloqueados entre bombo 909 y sub 808',
+        instrumentPalette: 'Roland TR-909, TR-707, TR-727, Moog sub-bass, FM synth plucks, analog stabs',
       },
       date: new Date().toISOString().split('T')[0],
     });
 
     const target = vault.saveEPNote(artistSlug, epSlug, rendered);
     console.log(`\n✅ EP creado exitosamente:\n   📄 ${target}\n`);
+
+    // Sincronizar automáticamente la discografía en la ficha del artista
+    const artistNotePath = path.join(vault.getVaultDir(), 'Artistas', artistSlug, '_artista.md');
+    if (fs.existsSync(artistNotePath)) {
+      let artistContent = fs.readFileSync(artistNotePath, 'utf8');
+      const epLink = `- [[Artistas/${artistSlug}/${epSlug}/_ep|${title}]]`;
+      if (artistContent.includes('*(Aún no hay EPs creados)*')) {
+        artistContent = artistContent.replace('*(Aún no hay EPs creados)*', epLink);
+        vault.saveArtistNote(artistSlug, artistContent);
+      } else if (!artistContent.includes(epLink)) {
+        artistContent = artistContent.replace(/(## 7\. Discografía en Suno-Vault[\s\S]*?- EPs Registrados:)/, `$1\n  ${epLink}`);
+        vault.saveArtistNote(artistSlug, artistContent);
+      }
+    }
     break;
   }
 
@@ -157,8 +203,29 @@ switch (command) {
     const stratArgIdx = args.indexOf('--strategy');
     const strategy = stratArgIdx !== -1 ? args[stratArgIdx + 1] : 'club';
 
+    const getOpt = (flag: string) => {
+      const idx = args.indexOf(flag);
+      return idx !== -1 ? args[idx + 1] : undefined;
+    };
+    const hasFlag = (flag: string) => args.includes(flag);
+
+    const customBpm = getOpt('--bpm') ? parseInt(getOpt('--bpm')!, 10) : undefined;
+    const customKey = getOpt('--key');
+    const customGenre = getOpt('--genre');
+    const customStructure = (getOpt('--structure') as 'extended' | 'eight_bars') || undefined;
+    const customVocal = getOpt('--vocal');
+    const customHook = getOpt('--hook');
+    const customLeadSynth = getOpt('--synth-lead');
+    const customInstruments = getOpt('--instruments');
+    const customWeirdness = getOpt('--weirdness') ? parseInt(getOpt('--weirdness')!, 10) : undefined;
+    const customStyleInfluence = getOpt('--style-influence') ? parseInt(getOpt('--style-influence')!, 10) : undefined;
+    const customAudioWeight = getOpt('--audio-weight') ? parseInt(getOpt('--audio-weight')!, 10) : undefined;
+    const customVariety = getOpt('--variety');
+    const customTake = getOpt('--take') ? parseInt(getOpt('--take')!, 10) : undefined;
+    const isVocalFlag = hasFlag('--is-vocal') || hasFlag('--vocal-track');
+
     if (!artistSlug || !epSlug || isNaN(trackNum)) {
-      console.log('Uso: engine compose <artist-slug> <ep-slug> <track-number> <track-slug> "<titulo>" [--strategy club|dance|pop|fusion]');
+      console.log('Uso: engine compose <artist-slug> <ep-slug> <track-number> <track-slug> "<titulo>" [--strategy club|dance|pop|fusion] [--bpm <bpm>] [--key <key>] [--genre <genre>] [--structure extended|eight_bars] [--vocal <vocal>] [--hook <hook>] [--is-vocal]');
       process.exit(1);
     }
 
@@ -186,14 +253,24 @@ switch (command) {
     };
 
     if (strategy === 'club') {
+      const isInst = !isVocalFlag;
       const clubRes = generateClubAdvancedTrack({
         title,
-        subgenre: 'Dark Disco, NY House, Dark House',
-        bpm: 125,
-        musicalKey: 'E minor',
-        vocalStyle: 'Vocoder',
-        vocalHook: `I love disco nights`,
+        subgenre: customGenre || 'Dark Disco, NY House, Dark House',
+        bpm: customBpm || 125,
+        musicalKey: customKey || 'E minor',
+        vocalStyle: customVocal || 'Vocoder',
+        vocalHook: customHook || `I love disco nights`,
         sunoVersion: 'v6',
+        structure: customStructure || 'extended',
+        instruments: customInstruments,
+        synthLead: customLeadSynth,
+        isInstrumental: isInst,
+        weirdness: customWeirdness,
+        styleInfluence: customStyleInfluence,
+        audioWeight: customAudioWeight,
+        variety: customVariety,
+        take: customTake,
       });
       generated = {
         stylePrompt: clubRes.stylePrompt,
@@ -202,14 +279,14 @@ switch (command) {
         musicalKey: clubRes.musicalKey,
         subgenre: clubRes.subgenre,
         sunoVersion: clubRes.sunoVersion,
-        isInstrumental: true,
-        vocalElements: 'Minimal vocoder hook chop',
+        isInstrumental: isInst,
+        vocalElements: isInst ? 'Minimal vocal chops' : 'Dry spoken vocal phrases and chops',
         defaultGenerationName: clubRes.defaultGenerationName,
         excludeStyles: clubRes.excludeStyles,
-        paramWeirdness: 15,
-        paramStyleInfluence: 100,
-        paramAudioWeight: 50,
-        paramVariety: 'N',
+        paramWeirdness: clubRes.paramWeirdness,
+        paramStyleInfluence: clubRes.paramStyleInfluence,
+        paramAudioWeight: clubRes.paramAudioWeight,
+        paramVariety: clubRes.paramVariety,
         presets: clubRes.presets,
       };
     } else if (strategy === 'pop') {
@@ -318,7 +395,7 @@ switch (command) {
       });
       isApproved = clubAudit.passed;
       auditScore = clubAudit.totalScore;
-      auditSummary = `Auditor Ralph Loop (6 Gates): ${clubAudit.totalScore}/10 (${clubAudit.passed ? 'APROBADA' : 'REQUIERE AJUSTES'})`;
+      auditSummary = `Auditor Ralph Loop (7 Gates): ${clubAudit.totalScore}/10 (${clubAudit.passed ? 'APROBADA' : 'REQUIERE AJUSTES'})`;
     } else {
       const stdAudit = evaluateSunoTrack({
         stylePrompt: generated.stylePrompt,
@@ -328,6 +405,36 @@ switch (command) {
       auditScore = stdAudit.totalScore;
       auditSummary = `Rúbrica 4D: ${stdAudit.totalScore}/10 (${stdAudit.passed ? 'APROBADA' : 'REQUIERE AJUSTES'})`;
     }
+
+    const barMatchesAll = Array.from(generated.lyricsWithMetatags.matchAll(/\[(\d+)\s+bars/gi));
+    const totalBars = barMatchesAll.reduce((acc, m) => acc + parseInt(m[1], 10), 0);
+    const bpmVal = generated.bpm || 120;
+    const calculatedSecondsRaw = totalBars > 0 ? totalBars * (240 / bpmVal) : 0;
+    const calculatedSeconds = Number(calculatedSecondsRaw.toFixed(2));
+    const durationExactSeconds = totalBars > 0 ? Number((calculatedSecondsRaw + 2).toFixed(2)) : 0;
+
+    const formatMmSs = (sec: number) => {
+      const rounded = Math.round(sec);
+      const m = Math.floor(rounded / 60);
+      const s = rounded % 60;
+      return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    };
+
+    const calculatedDurationFormatted = formatMmSs(calculatedSeconds);
+    const exactDurationFormatted = formatMmSs(durationExactSeconds);
+
+    const targetFile = vault.getSongTrackPath(artistSlug, epSlug, trackNum, trackSlug);
+    let existingContent = '';
+    if (fs.existsSync(targetFile)) {
+      existingContent = fs.readFileSync(targetFile, 'utf8');
+    }
+
+    const versionHistoryDetails = extractArchivedVersions(
+      existingContent,
+      generated.defaultGenerationName,
+      generated.stylePrompt,
+      generated.lyricsWithMetatags
+    );
 
     const tpl = loadTemplateFile('_cancion.tpl.md');
     const rendered = injectTemplate(tpl, {
@@ -343,6 +450,11 @@ switch (command) {
         subgenre: generated.subgenre,
         bpm: generated.bpm,
         musicalKey: generated.musicalKey,
+        totalBars,
+        calculatedSeconds,
+        calculatedDurationFormatted,
+        durationExactSeconds,
+        exactDurationFormatted,
         sunoVersion: generated.sunoVersion,
         isInstrumental: generated.isInstrumental,
         vocalElements: generated.vocalElements,
@@ -356,6 +468,7 @@ switch (command) {
         stylePrompt: generated.stylePrompt,
         excludeStyles: generated.excludeStyles,
         lyricsWithMetatags: generated.lyricsWithMetatags,
+        versionHistoryDetails,
         vibeDescription: `Pista compuesta con estrategia "${strategy}". ${auditSummary}.`,
         namingPreset1: generated.presets.preset1,
         namingPreset2: generated.presets.preset2,
@@ -372,6 +485,7 @@ switch (command) {
     console.log(`\n🎶 Canción compuesta exitosamente (Estrategia: ${strategy}):\n   📄 ${target}`);
     console.log(`   📊 ${auditSummary}`);
     console.log(`   🏷️  Nombre de Generación: ${generated.defaultGenerationName}`);
+    console.log(`   ⏱️  Duración Calculada: ${totalBars} compases = ${calculatedDurationFormatted} (${calculatedSeconds}s) | Exacta (+2s): ${exactDurationFormatted} (${durationExactSeconds}s)`);
     console.log(`   🔤 Caracteres Style Prompt: ${generated.stylePrompt.length}\n`);
     break;
   }
@@ -417,13 +531,14 @@ switch (command) {
       console.log(`Modo: SUNO v6 MODO AVANZADO (suno-prompter Ralph Loop)`);
       console.log(`Puntaje Total: ${clubAudit.totalScore} / 10.0 [${clubAudit.passed ? '✅ APROBADO (>= 9.5)' : '❌ RECHAZADO'}]`);
       console.log(`---------------------------------------------------------------------`);
-      console.log(`Filtros de Calidad (6 Gates):`);
-      console.log(`  • Gate 1 (Naming Standard):     ${clubAudit.gates.gate1_naming.passed ? '✅' : '❌'} (${clubAudit.gates.gate1_naming.score}/1.66) ${clubAudit.gates.gate1_naming.observation ? `- ${clubAudit.gates.gate1_naming.observation}` : ''}`);
-      console.log(`  • Gate 2 (Micro-Tags Secciones): ${clubAudit.gates.gate2_microTags.passed ? '✅' : '❌'} (${clubAudit.gates.gate2_microTags.score}/1.67) ${clubAudit.gates.gate2_microTags.observation ? `- ${clubAudit.gates.gate2_microTags.observation}` : ''}`);
-      console.log(`  • Gate 3 (Cómputo Compases):     ${clubAudit.gates.gate3_barCounts.passed ? '✅' : '❌'} (${clubAudit.gates.gate3_barCounts.score}/1.67) ${clubAudit.gates.gate3_barCounts.observation ? `- ${clubAudit.gates.gate3_barCounts.observation}` : ''}`);
-      console.log(`  • Gate 4 (Style Box Completo):   ${clubAudit.gates.gate4_styleBox.passed ? '✅' : '❌'} (${clubAudit.gates.gate4_styleBox.score}/1.67) ${clubAudit.gates.gate4_styleBox.observation ? `- ${clubAudit.gates.gate4_styleBox.observation}` : ''}`);
-      console.log(`  • Gate 5 (Exclude Styles):      ${clubAudit.gates.gate5_excludeStyles.passed ? '✅' : '❌'} (${clubAudit.gates.gate5_excludeStyles.score}/1.66) ${clubAudit.gates.gate5_excludeStyles.observation ? `- ${clubAudit.gates.gate5_excludeStyles.observation}` : ''}`);
-      console.log(`  • Gate 6 (Aislamiento de Drop): ${clubAudit.gates.gate6_dropIsolation.passed ? '✅' : '❌'} (${clubAudit.gates.gate6_dropIsolation.score}/1.67) ${clubAudit.gates.gate6_dropIsolation.observation ? `- ${clubAudit.gates.gate6_dropIsolation.observation}` : ''}`);
+      console.log(`Filtros de Calidad (7 Gates):`);
+      console.log(`  • Gate 1 (Naming Standard):     ${clubAudit.gates.gate1_naming.passed ? '✅' : '❌'} (${clubAudit.gates.gate1_naming.score}/1.43) ${clubAudit.gates.gate1_naming.observation ? `- ${clubAudit.gates.gate1_naming.observation}` : ''}`);
+      console.log(`  • Gate 2 (Micro-Tags Secciones): ${clubAudit.gates.gate2_microTags.passed ? '✅' : '❌'} (${clubAudit.gates.gate2_microTags.score}/1.43) ${clubAudit.gates.gate2_microTags.observation ? `- ${clubAudit.gates.gate2_microTags.observation}` : ''}`);
+      console.log(`  • Gate 3 (Cómputo Compases):     ${clubAudit.gates.gate3_barCounts.passed ? '✅' : '❌'} (${clubAudit.gates.gate3_barCounts.score}/1.43) ${clubAudit.gates.gate3_barCounts.observation ? `- ${clubAudit.gates.gate3_barCounts.observation}` : ''}`);
+      console.log(`  • Gate 4 (Style Box <=1000ch):  ${clubAudit.gates.gate4_styleBox.passed ? '✅' : '❌'} (${clubAudit.gates.gate4_styleBox.score}/1.43) ${clubAudit.gates.gate4_styleBox.observation ? `- ${clubAudit.gates.gate4_styleBox.observation}` : ''}`);
+      console.log(`  • Gate 5 (Exclude Styles):      ${clubAudit.gates.gate5_excludeStyles.passed ? '✅' : '❌'} (${clubAudit.gates.gate5_excludeStyles.score}/1.42) ${clubAudit.gates.gate5_excludeStyles.observation ? `- ${clubAudit.gates.gate5_excludeStyles.observation}` : ''}`);
+      console.log(`  • Gate 6 (Aislamiento de Drop): ${clubAudit.gates.gate6_dropIsolation.passed ? '✅' : '❌'} (${clubAudit.gates.gate6_dropIsolation.score}/1.43) ${clubAudit.gates.gate6_dropIsolation.observation ? `- ${clubAudit.gates.gate6_dropIsolation.observation}` : ''}`);
+      console.log(`  • Gate 7 (Límite Letra <=5000): ${clubAudit.gates.gate7_lyricsLength.passed ? '✅' : '❌'} (${clubAudit.gates.gate7_lyricsLength.score}/1.43) ${clubAudit.gates.gate7_lyricsLength.observation ? `- ${clubAudit.gates.gate7_lyricsLength.observation}` : ''}`);
 
       if (clubAudit.observations.length > 0) {
         console.log(`\nObservaciones:`);
@@ -507,6 +622,75 @@ switch (command) {
       console.log('');
     } else {
       console.log('Uso: engine vault <artists|specs|search> [args]');
+    }
+    break;
+  }
+  case 'glossary': {
+    const sub = args[1];
+    const rest = args.slice(2);
+    const gm = new GlossaryManager(path.resolve(__dirname, '../..'));
+
+    if (sub === 'scan') {
+      const input = rest.join(' ');
+      if (!input) {
+        console.log('Uso: engine glossary scan "<texto o prompt con palabras>"');
+        process.exit(1);
+      }
+      const { known, candidates } = gm.scanText(input);
+      console.log(`\n🔍 Análisis de Tags contra el Glosario de Suno:`);
+      console.log(`─────────────────────────────────────────────────────────────`);
+      console.log(`✅ Tags Ya Registrados (${known.length}):`);
+      for (const k of known) console.log(`   • ${k}`);
+      console.log(`\n🆕 Tags Nuevos Detectados (${candidates.length}):`);
+      for (const c of candidates) console.log(`   ✨ ${c}`);
+      console.log(`─────────────────────────────────────────────────────────────\n`);
+    } else if (sub === 'list') {
+      const tags = gm.extractExistingTags();
+      console.log(`\n📚 Inventario de Tags en el Glosario (${tags.length}):`);
+      const byCat = new Map<string, string[]>();
+      for (const t of tags) {
+        if (!byCat.has(t.category)) byCat.set(t.category, []);
+        byCat.get(t.category)!.push(t.tag);
+      }
+      for (const [cat, items] of byCat.entries()) {
+        console.log(`\n[${cat}] (${items.length}):`);
+        console.log(`   ${items.join(', ')}`);
+      }
+      console.log('\n');
+    } else if (sub === 'add') {
+      // Parsear flags tipo --tag "x" --category "y" ...
+      const getFlag = (f: string): string => {
+        const idx = rest.indexOf(f);
+        return idx !== -1 && rest[idx + 1] ? rest[idx + 1] : '';
+      };
+      const tag = getFlag('--tag');
+      const category = getFlag('--category') || '1. Bombos (Kicks)';
+      const subcat = getFlag('--subcat') || 'Sonido sintetizado';
+      const desc = getFlag('--desc') || 'Ataque percusivo';
+      const subgenre = getFlag('--subgenre') || 'Club / Electronic';
+      const example = getFlag('--example') || `${tag} in style box`;
+
+      if (!tag) {
+        console.log('Uso: engine glossary add --tag "<tag>" [--category "<cat>"] [--subcat "<subcat>"] [--desc "<desc>"] [--subgenre "<subgenre>"] [--example "<example>"]');
+        process.exit(1);
+      }
+
+      const ok = gm.addEntry({
+        category,
+        tag,
+        subcat,
+        freqTexture: desc,
+        subgenre,
+        examplePrompt: example
+      });
+
+      if (ok) {
+        console.log(`\n✅ Tag "${tag}" agregado exitosamente a la sección "${category}" del glosario.`);
+      } else {
+        console.log(`\n❌ Error al agregar el tag "${tag}".`);
+      }
+    } else {
+      console.log('Uso: engine glossary <scan|list|add> [args]');
     }
     break;
   }
